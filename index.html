@@ -1,0 +1,238 @@
+<!--// GANTI URL INI DENGAN WEB APP URL DARI GOOGLE APPS SCRIPT
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbxhBexKjL1Cn8mqZ3cZtHpgw0Acpp1KUH1tu7Y66Besz5g_ttCwAOgHHMjyBP0e7Csh/exec";
+-->
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pencarian Kaling</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 min-h-screen text-slate-800 p-4">
+
+  <div class="max-w-md mx-auto bg-white rounded-xl shadow-md p-6">
+    
+    <!-- SECTION LOGIN -->
+    <div id="loginSection">
+      <h2 class="text-2xl font-bold text-center mb-4">Masuk Aplikasi</h2>
+      <input type="password" id="passInput" placeholder="Masukkan Password" class="w-full border p-3 rounded-lg mb-3 focus:outline-none focus:ring-2 focus:ring-blue-500">
+      <button onclick="login()" class="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700">Masuk</button>
+      <p id="loginError" class="text-red-500 text-sm mt-2 hidden text-center"></p>
+    </div>
+
+    <!-- SECTION MAIN APP -->
+    <div id="appSection" class="hidden">
+      <div class="flex justify-between items-center mb-4 pb-2 border-b">
+        <span id="userBadge" class="text-xs px-2 py-1 bg-gray-200 rounded uppercase font-bold"></span>
+        <button onclick="logout()" class="text-xs text-red-500 hover:underline">Keluar</button>
+      </div>
+
+      <!-- FILTER DROPDOWN WILAYAH -->
+      <div class="mb-3">
+        <label for="wilayahFilter" class="block text-xs font-semibold text-slate-600 mb-1">Pilih Wilayah:</label>
+        <select id="wilayahFilter" onchange="filterData()" class="w-full border p-3 rounded-lg bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
+          <option value="">-- Pilih Wilayah --</option>
+        </select>
+      </div>
+
+      <!-- SEARCH BAR -->
+      <div class="mb-4">
+        <input type="text" id="searchInput" oninput="filterData()" placeholder="Cari nama atau lingkungan..." class="w-full border p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
+      </div>
+
+      <!-- LIST DATA -->
+      <div id="dataList" class="space-y-3"></div>
+    </div>
+
+  </div>
+
+  <!-- MODAL EDIT ADMIN -->
+  <div id="editModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden p-4 z-50">
+    <div class="bg-white rounded-lg p-5 w-full max-w-sm shadow-xl">
+      <h3 class="font-bold text-lg mb-3">Edit Kaling</h3>
+      <input type="hidden" id="editId">
+      
+      <label class="block text-xs text-slate-500 mb-1">Nama Kaling</label>
+      <input type="text" id="editNama" class="w-full border p-2 rounded mb-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+      
+      <label class="block text-xs text-slate-500 mb-1">No WA (Format: 628xxx)</label>
+      <input type="text" id="editWa" class="w-full border p-2 rounded mb-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+      
+      <div class="flex justify-end gap-2">
+        <button onclick="closeModal()" class="px-4 py-2 border rounded text-sm hover:bg-slate-50">Batal</button>
+        <button onclick="saveEdit()" class="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">Simpan</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // GANTI URL INI DENGAN WEB APP URL DARI GOOGLE APPS SCRIPT
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbxhBexKjL1Cn8mqZ3cZtHpgw0Acpp1KUH1tu7Y66Besz5g_ttCwAOgHHMjyBP0e7Csh/exec";
+
+    let currentPass = "";
+    let currentRole = "";
+    let rawData = [];
+
+	async function login() {
+	  const pass = document.getElementById("passInput").value;
+	  const errorEl = document.getElementById("loginError");
+	  errorEl.classList.add("hidden");
+
+	  if (!pass) return;
+
+	  const res = await fetch(GAS_URL, {
+		method: "POST",
+		body: JSON.stringify({ action: "read", password: pass })
+	  }).then(r => r.json());
+
+	  if (res.success) {
+		currentPass = pass;
+		rawData = res.data;
+		
+		// AMBIL ROLE LANGSUNG DARI RESPON BACKEND (AMAN)
+		currentRole = res.role.toUpperCase(); 
+		
+		document.getElementById("loginSection").classList.add("hidden");
+		document.getElementById("appSection").classList.remove("hidden");
+		document.getElementById("userBadge").innerText = `Role: ${currentRole}`;
+		
+		populateWilayahDropdown(rawData);
+		filterData();
+	  } else {
+		errorEl.innerText = res.message;
+		errorEl.classList.remove("hidden");
+	  }
+	}
+
+    // MEMBUAT DAFTAR PILIHAN WILAYAH DINAMIS DARI DATA
+    function populateWilayahDropdown(data) {
+      const selectEl = document.getElementById("wilayahFilter");
+      selectEl.innerHTML = `<option value="">-- Pilih Wilayah --</option><option value="ALL">-- Tampilkan Semua Wilayah --</option>`;
+
+      // Mengambil daftar wilayah unik yang tidak kosong
+      const listWilayah = [...new Set(data.map(item => item.wilayah).filter(Boolean))].sort();
+
+      listWilayah.forEach(w => {
+        const opt = document.createElement("option");
+        opt.value = w;
+        opt.textContent = w;
+        selectEl.appendChild(opt);
+      });
+    }
+
+    function filterData() {
+      const selectedWilayah = document.getElementById("wilayahFilter").value;
+      const q = document.getElementById("searchInput").value.toLowerCase();
+      const listEl = document.getElementById("dataList");
+
+      // Jika wilayah belum dipilih sama sekali dan input pencarian kosong
+      if (!selectedWilayah && !q) {
+        listEl.innerHTML = `<p class="text-center text-slate-400 text-sm py-4">Silakan pilih **Wilayah** atau ketik pencarian di atas untuk menampilkan data.</p>`;
+        return;
+      }
+
+      const filtered = rawData.filter(item => {
+        const matchWilayah = selectedWilayah === "ALL" || !selectedWilayah || (item.wilayah && item.wilayah === selectedWilayah);
+        const matchSearch = !q || (
+          (item.wilayah && item.wilayah.toLowerCase().includes(q)) ||
+          (item.lingkungan && item.lingkungan.toLowerCase().includes(q)) ||
+          (item.nama_kaling && item.nama_kaling.toLowerCase().includes(q))
+        );
+
+        return matchWilayah && matchSearch;
+      });
+
+      renderData(filtered);
+    }
+
+    function renderData(items) {
+      const listEl = document.getElementById("dataList");
+      listEl.innerHTML = "";
+
+      if (items.length === 0) {
+        listEl.innerHTML = `<p class="text-center text-slate-400 text-sm py-4">Data tidak ditemukan.</p>`;
+        return;
+      }
+
+      items.forEach(item => {
+        const cleanWa = item.no_wa ? item.no_wa.replace(/[^0-9]/g, '') : '';
+        const waUrl = cleanWa ? `https://wa.me/${cleanWa}` : '#';
+
+        const card = document.createElement("div");
+        card.className = "border rounded-lg p-3 bg-slate-50 relative shadow-sm";
+        card.innerHTML = `
+          <div class="font-semibold text-blue-900 text-base">${item.nama_kaling || '-'}</div>
+          <div class="text-xs text-slate-600 mt-1">${item.wilayah || '-'} • ${item.lingkungan || '-'}</div>
+          <div class="mt-3 flex justify-between items-center pt-2 border-t border-slate-200">
+            ${cleanWa ? `
+              <a href="${waUrl}" target="_blank" class="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1.5 rounded-md hover:bg-emerald-100 border border-emerald-200">
+                💬 WA: ${item.no_wa}
+              </a>
+            ` : `<span class="text-xs text-slate-400">Tidak ada WA</span>`}
+            
+            ${currentRole === "ADMIN" ? `
+              <button onclick="openModal(${item.id}, '${item.nama_kaling || ''}', '${item.no_wa || ''}')" class="text-xs bg-amber-500 text-white px-3 py-1.5 rounded-md hover:bg-amber-600 font-semibold">
+                Edit
+              </button>
+            ` : ''}
+          </div>
+        `;
+        listEl.appendChild(card);
+      });
+    }
+
+    function openModal(id, nama, wa) {
+      document.getElementById("editId").value = id;
+      document.getElementById("editNama").value = nama;
+      document.getElementById("editWa").value = wa;
+      document.getElementById("editModal").classList.remove("hidden");
+    }
+
+    function closeModal() {
+      document.getElementById("editModal").classList.add("hidden");
+    }
+
+    async function saveEdit() {
+      const payload = {
+        id: document.getElementById("editId").value,
+        nama_kaling: document.getElementById("editNama").value,
+        no_wa: document.getElementById("editWa").value
+      };
+
+      const res = await fetch(GAS_URL, {
+        method: "POST",
+        body: JSON.stringify({
+          action: "update",
+          password: currentPass,
+          payload: payload
+        })
+      }).then(r => r.json());
+
+      if (res.success) {
+        closeModal();
+        // Update data di memori lokal agar tidak perlu reload ulang
+        const index = rawData.findIndex(d => d.id == payload.id);
+        if (index !== -1) {
+          rawData[index].nama_kaling = payload.nama_kaling;
+          rawData[index].no_wa = payload.no_wa;
+        }
+        filterData();
+      } else {
+        alert(res.message);
+      }
+    }
+
+    function logout() {
+      currentPass = "";
+      currentRole = "";
+      document.getElementById("passInput").value = "";
+      document.getElementById("wilayahFilter").value = "";
+      document.getElementById("searchInput").value = "";
+      document.getElementById("appSection").classList.add("hidden");
+      document.getElementById("loginSection").classList.remove("hidden");
+    }
+  </script>
+</body>
+</html>
+ 
